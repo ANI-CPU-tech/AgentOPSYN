@@ -1,0 +1,49 @@
+# 🔐 Environment variables
+.env
+backend/.env
+
+# 🐍 Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 🧪 Virtual environments
+venv/
+.env/
+.venv/
+
+# 🗄️ SQLite (local dev only)
+*.sqlite3
+db.sqlite3
+
+# 📦 Django stuff
+*.log
+staticfiles/
+media/
+
+# 🧾 Migrations (optional — see note below)
+**/migrations/*
+!**/migrations/__init__.py
+
+# 🐳 Docker
+*.pid
+*.log
+
+# 🧠 IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 🖥️ OS files
+.DS_Store
+Thumbs.db
+
+# 🔥 Node (frontend)
+node_modules/
+dist/
+build/
+
+# 📄 Misc
+*.bak
+*.tmp
