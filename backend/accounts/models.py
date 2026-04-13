@@ -72,11 +72,9 @@ class APIKey(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     label = models.CharField(max_length=100)
     key_hash = models.CharField(max_length=255, unique=True, db_index=True)
-    user = (models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_keys"),)
-    org = (
-        models.ForeignKey(
-            Organization, on_delete=models.CASCADE, related_name="api_keys"
-        ),
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_keys")
+    org = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="api_keys"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(blank=True, null=True)
