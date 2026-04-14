@@ -3,3 +3,6 @@ djangorestframework
 djangorestframework-simplejwt
 psycopg[binary]
 python-dotenv
+django-redis      
+celery            
+redis             
