@@ -91,6 +91,12 @@ REST_FRAMEWORK = {
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://redis:6379/1",
+    }
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
@@ -132,6 +138,8 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+CELERY_BROKER_URL = "redis://redis:6379/0"
+CELERY_RESULT_BACKEND = "redis://redis:6379/0"
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
