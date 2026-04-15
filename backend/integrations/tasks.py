@@ -37,10 +37,9 @@ def normalize_and_embed(self, event_id: str):
 
     try:
         # Hand off to the knowledge app Celery task
-        # from knowledge.tasks import chunk_and_embed
+        from knowledge.tasks import chunk_and_embed
 
-        # chunk_and_embed.delay(event_id=event_id, source_type="event")
-        print(f"[STUB] Would embed event {event_id} — knowledge app not built yet")
+        chunk_and_embed.delay(event_id=event_id, source_type="event")
         logger.info(f"Dispatched chunk_and_embed for event {event_id}")
 
     except Exception as exc:
