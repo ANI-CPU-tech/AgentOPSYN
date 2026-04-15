@@ -43,7 +43,7 @@ class WebhookReceiverView(APIView):
         cache.set(cache_key, "1", timeout=86400)
 
         try:
-            normalized = adapter.normalized(payload, headers)
+            normalized = adapter.normalize(payload, headers)
         except Exception as e:
             return Response(
                 {"detail": f"Normalization failed: {str(e)}"},
@@ -60,7 +60,7 @@ class WebhookReceiverView(APIView):
         )
 
         normalize_and_embed.delay(str(event.id))
-        return Response({"event_id": str(event.id)}, status=HTTP_202_ACCEPTED)
+        return Response({"event_id": str(event.id)}, status=status.HTTP_202_ACCEPTED)
 
 
 class IntegrationListCreateView(APIView):

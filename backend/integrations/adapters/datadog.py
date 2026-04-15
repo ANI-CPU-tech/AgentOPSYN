@@ -27,5 +27,7 @@ class DatadogAdapter(BaseAdapter):
 
     def get_idempotency_key(self, payload: dict, headers: dict) -> str:
         alert_id = payload.get("id", "unknown")
+        status = payload.get("alert_transition", payload.get("type", "unknown"))
         ts = payload.get("last_updated", "")
-        return f"datadog:{alert_id}:{ts}"
+
+        return f"datadog:{alert_id}:{status}:{ts}"

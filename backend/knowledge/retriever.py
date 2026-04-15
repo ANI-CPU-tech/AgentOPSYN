@@ -12,7 +12,7 @@ MMR_LAMBDA = 0.7
 
 
 def encode_query(query: str) -> list:
-    model.get_model()
+    model = get_model()
     return model.encode([query])[0].tolist()
 
 
@@ -40,7 +40,8 @@ def mmr_rerank(query_vector: list, candidates: list, top_k: int = 5) -> list:
 
             if selected:
                 redundancy = max(
-                    cosine_similarity(candidate["vector"], s[vector]) for s in selected
+                    cosine_similarity(candidate["vector"], s["vector"])
+                    for s in selected
                 )
             else:
                 redundancy = 0.0
@@ -53,7 +54,7 @@ def mmr_rerank(query_vector: list, candidates: list, top_k: int = 5) -> list:
     return selected
 
 
-def shanon_entropy(vectors: list) -> float:
+def shannon_entropy(vectors: list) -> float:
     """
     H(X) = -Σ P(xi) log2 P(xi)
     Computed over cosine similarities of top-k results.
@@ -87,14 +88,14 @@ def semantic_search(query: str, org_id: str, top_k: int = 10) -> dict:
 
     # --- pgvector cosine similarity search ---
     with connection.cursor() as cursor:
-        cursor.execute(
+        cursor.execute(  # change NULL as runbook_id to e.runbook_id once runbook app is done
             """
             SELECT
                 e.id,
-                e.content_chunk,
+                e.context_chunk,
                 e.chunk_index,
                 e.event_id,
-                e.runbook_id,
+                NULL as runbook_id, 
                 1 - (e.embedding <=> %s::vector) AS similarity
             FROM knowledge_embedding e
             WHERE e.org_id = %s

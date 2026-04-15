@@ -35,6 +35,11 @@ class GitHubAdapter(BaseAdapter):
             },
         }
 
-    def get_idempotency_key(self, payload: dict, headers: dict) -> str:
-        delivery_id = headers.get("X-GitHub-Delivery", "")
-        return f"github:{delivery_id}"
+    def get_idempotency_key(self, payload, headers):
+        commits = payload.get("commits", [])
+        repo = payload.get("repository", {}).get("full_name", "")
+
+        if commits:
+            return f"{repo}:{commits[0].get('id')}"
+
+        return f"{repo}:{payload.get('ref')}"

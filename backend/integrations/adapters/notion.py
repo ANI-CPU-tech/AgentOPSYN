@@ -29,6 +29,8 @@ class NotionAdapter(BaseAdapter):
         }
 
     def get_idempotency_key(self, payload: dict, headers: dict) -> str:
+        event_type = payload.get("type", "unknown")
         page_id = payload.get("page", {}).get("id", "unknown")
         ts = payload.get("page", {}).get("last_edited_time", "")
-        return f"notion:{page_id}:{ts}"
+
+        return f"notion:{event_type}:{page_id}:{ts}"

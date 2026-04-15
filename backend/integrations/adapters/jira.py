@@ -25,6 +25,8 @@ class JiraAdapter(BaseAdapter):
         }
 
     def get_idempotency_key(self, payload: dict, headers: dict) -> str:
-        issue_key = payload.get("issue", {}).get("key", "unknown")
+        event = payload.get("webhookEvent", "unknown")
+        issue_id = payload.get("issue", {}).get("id", "unknown")
         timestamp = payload.get("timestamp", "")
-        return f"jira:{issue_key}:{timestamp}"
+
+        return f"jira:{event}:{issue_id}:{timestamp}"

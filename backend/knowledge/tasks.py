@@ -72,7 +72,7 @@ def chunk_and_embed(
 
     existing_checkpoints = set(
         Embedding.objects.filter(
-            org=org, chunk_index__in=range(len(chunks)), check_point=True, **fk_kwargs
+            org=org, chunk_index__in=range(len(chunks)), checkpoint=True, **fk_kwargs
         ).values_list("chunk_index", flat=True)
     )
 
@@ -85,7 +85,7 @@ def chunk_and_embed(
         to_create.append(
             Embedding(
                 org=org,
-                content_chunk=chunk_text_piece,
+                context_chunk=chunk_text_piece,
                 embedding=vector.tolist(),
                 chunk_index=i,
                 checkpoint=True,

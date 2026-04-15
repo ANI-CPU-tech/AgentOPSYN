@@ -25,5 +25,10 @@ class SlackAdapter(BaseAdapter):
         }
 
     def get_idempotency_key(self, payload: dict, headers: dict) -> str:
-        event_id = payload.get("event_id", "")
-        return f"slack:{event_id}"
+        event_id = payload.get("event_id")
+        if event_id:
+            return f"slack:{event_id}"
+
+        # fallback (rare)
+        ts = payload.get("event", {}).get("ts", "")
+        return f"slack:fallback:{ts}"
