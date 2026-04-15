@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   db:
-    image: postgres:15
+    image: ankane/pgvector:latest   # ✅ IMPORTANT CHANGE
     container_name: agentopsyn_db
     restart: always
     environment:
@@ -36,7 +36,7 @@ services:
   worker:
     build: ./backend
     container_name: agentopsyn_worker
-    command: celery -A config worker -l info
+    command: celery -A backend worker -l info
     volumes:
       - ./backend:/app
     depends_on:
