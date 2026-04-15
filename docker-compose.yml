@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   db:
-    image: ankane/pgvector:latest   # ✅ IMPORTANT CHANGE
+    image: ankane/pgvector:latest
     container_name: agentopsyn_db
     restart: always
     environment:
@@ -32,16 +32,23 @@ services:
     depends_on:
       - db
       - redis
+    # Allow container to reach Ollama on the host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   worker:
     build: ./backend
     container_name: agentopsyn_worker
+    # Assuming your project config is in a folder named 'config', otherwise change 'config' to 'backend'
     command: celery -A backend worker -l info
     volumes:
       - ./backend:/app
     depends_on:
       - db
       - redis
+    # Allow Celery worker to reach Ollama if it ever needs to
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

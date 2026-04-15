@@ -6,6 +6,7 @@ python-dotenv
 django-redis
 celery
 redis
-pgvector  
+pgvector
 numpy<2
 sentence-transformers
+requests

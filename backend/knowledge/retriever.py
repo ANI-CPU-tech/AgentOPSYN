@@ -6,8 +6,8 @@ from django.db import connection
 from .models import Embedding
 from .tasks import get_model
 
-CONFIDENCE_THRESHOLD = 0.72
-ENTROPY_THRESHOLD = 2.1  # bits — above this = knowledge gap
+CONFIDENCE_THRESHOLD = 0.40
+ENTROPY_THRESHOLD = 3.5  # bits — above this = knowledge gap
 MMR_LAMBDA = 0.7
 
 
