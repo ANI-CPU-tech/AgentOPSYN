@@ -7,8 +7,12 @@ WORKDIR /app
 # Copy requirements
 COPY requirements.txt .
 
+RUN pip install --no-cache-dir --default-timeout=1000 \
+    torch==2.4.1 \
+    --index-url https://download.pytorch.org/whl/cpu
+
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
 # Copy project
 COPY . .
