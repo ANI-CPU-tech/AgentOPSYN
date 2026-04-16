@@ -24,4 +24,5 @@ urlpatterns = [
     path("api/", include("integrations.urls")),
     path("api/", include("knowledge.urls")),
     path("api/", include("agent.urls")),
+    path("api/", include("approvals.urls")),
 ]
