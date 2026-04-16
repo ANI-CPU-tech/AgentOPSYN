@@ -112,6 +112,11 @@ DATABASES = {
     }
 }
 
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+JIRA_BASE_URL = os.getenv("JIRA_BASE_URL")
+JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
+JIRA_EMAIL = os.getenv("JIRA_EMAIL")
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
