@@ -14,6 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 from datetime import timedelta
+from celery.schedules import crontab
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -116,7 +117,14 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 JIRA_BASE_URL = os.getenv("JIRA_BASE_URL")
 JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
 JIRA_EMAIL = os.getenv("JIRA_EMAIL")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
+CELERY_BEAT_SCHEDULE = {
+    "sync-github-history-every-6-hours": {
+        "task": "integrations.tasks.sync_all_github_repos",
+        "schedule": crontab(minute=0, hour="*/6"),  # Runs every 6 hours
+    },
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
