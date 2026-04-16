@@ -2,6 +2,8 @@ import time
 import random
 from celery import shared_task
 from celery.utils.log import get_task_logger
+from django.conf import settings
+import requests
 
 logger = get_task_logger(__name__)
 
@@ -55,3 +57,96 @@ def normalize_and_embed(self, event_id: str):
         event.save(update_fields=["embedding_status"])
 
         raise self.retry(exc=exc, countdown=delay)
+
+
+@shared_task(bind=True)
+def scrape_github_history(
+    self, repo_full_name: str, org_id: str, user_id: str, limit: int = 50
+):
+    """
+    Actively fetches recent commits from the GitHub REST API
+    and ingests them into the knowledge base.
+    """
+    token = getattr(settings, "GITHUB_TOKEN", None)
+    if not token:
+        logger.error("No GITHUB_TOKEN configured in settings.")
+        return
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+    url = f"https://api.github.com/repos/{repo_full_name}/commits?per_page={limit}"
+
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        logger.error(f"GitHub API failed: {response.text}")
+        return
+
+    commits = response.json()
+    logger.info(f"Fetched {len(commits)} commits from {repo_full_name}")
+
+    from integrations.models import Event
+    from accounts.models import Organization
+
+    org = Organization.objects.get(id=org_id)
+
+    # Process each commit into our standard Event format
+    for commit in commits:
+        sha = commit.get("sha")
+        author = commit.get("commit", {}).get("author", {}).get("name", "unknown")
+        message = commit.get("commit", {}).get("message", "")
+        url = commit.get("html_url", "")
+        timestamp = commit.get("commit", {}).get("author", {}).get("date")
+
+        # Check if we already ingested this commit
+        idempotency_key = f"github_api_commit:{sha}"
+        if Event.objects.filter(idempotency_key=idempotency_key).exists():
+            continue
+
+        normalized = {
+            "source": "github",
+            "event_type": "historical_commit",
+            "title": f"Historical Commit by {author}",
+            "body": message,
+            "actor": author,
+            "url": url,
+            "timestamp": timestamp,
+            "metadata": {"repo": repo_full_name, "sha": sha},
+        }
+
+        # Save to database
+        event = Event.objects.create(
+            idempotency_key=idempotency_key,
+            source="github",
+            event_type="historical_commit",
+            raw_payload=commit,
+            normalized_payload=normalized,
+            org=org,
+        )
+
+        # Send it to the RAG pipeline!
+        from knowledge.tasks import chunk_and_embed
+
+        chunk_and_embed.delay(event_id=str(event.id), source_type="event")
+
+    logger.info(f"Successfully triggered embedding for {repo_full_name} history.")
+
+
+@shared_task
+def sync_all_github_repos():
+    """Finds all active GitHub integrations and triggers a scrape for each."""
+    from .models import Integration
+
+    github_integrations = Integration.objects.filter(source="github", is_active=True)
+
+    for integration in github_integrations:
+        repo_name = integration.config.get("repo_full_name")
+        if repo_name:
+            scrape_github_history.delay(
+                repo_full_name=repo_name,
+                org_id=str(integration.org.id),
+                user_id="system-scheduler",
+                limit=10,  # Smaller limit for periodic syncs
+            )

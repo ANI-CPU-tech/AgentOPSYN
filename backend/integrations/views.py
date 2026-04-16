@@ -129,3 +129,47 @@ class EventDetailView(APIView):
         except Event.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(EventSerializer(event).data)
+
+
+class IntegrationListCreateView(APIView):
+    # Only admins can list or create integrations
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        """List all connected integrations for this org."""
+        integrations = Integration.objects.filter(org=request.user.org)
+        return Response(IntegrationSerializer(integrations, many=True).data)
+
+    def post(self, request):
+        """Connect a new integration and trigger automated history scraping."""
+        source = request.data.get("source")
+
+        # 1. Prevent 500 Error: Check if integration already exists
+        if Integration.objects.filter(org=request.user.org, source=source).exists():
+            return Response(
+                {
+                    "detail": f"Integration for {source} already exists for this organization. Use DELETE to remove it first or PUT to update it."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = IntegrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # 2. Save the integration
+        integration = serializer.save(org=request.user.org)
+
+        # 3. AUTOMATION: Trigger the historical scraper if it's GitHub
+        if integration.source == "github":
+            repo_name = integration.config.get("repo_full_name")
+            if repo_name:
+                from .tasks import scrape_github_history
+
+                scrape_github_history.delay(
+                    repo_full_name=repo_name,
+                    org_id=str(request.user.org.id),
+                    user_id=str(request.user.id),
+                    limit=50,
+                )
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

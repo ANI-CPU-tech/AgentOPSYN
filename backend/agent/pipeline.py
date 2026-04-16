@@ -4,7 +4,7 @@ from typing import Optional
 from .ollama_client import chat
 
 # Threshold lowered as requested to ensure execution path is triggered
-CONFIDENCE_THRESHOLD = 4.50
+CONFIDENCE_THRESHOLD = 0.30
 MAX_REPLAN_ATTEMPTS = 2
 
 # List of known action types for the Executor to use
