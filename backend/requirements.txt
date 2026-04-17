@@ -10,3 +10,4 @@ pgvector
 numpy<2
 sentence-transformers
 requests
+cryptography

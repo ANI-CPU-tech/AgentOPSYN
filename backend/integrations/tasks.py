@@ -4,6 +4,7 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 from django.conf import settings
 import requests
+from .crypto import decrypt_credential
 
 logger = get_task_logger(__name__)
 
@@ -65,15 +66,34 @@ def scrape_github_history(
 ):
     """
     Actively fetches recent commits from the GitHub REST API
-    and ingests them into the knowledge base.
+    and ingests them into the knowledge base using the decrypted org token.
     """
-    token = getattr(settings, "GITHUB_TOKEN", None)
-    if not token:
-        logger.error("No GITHUB_TOKEN configured in settings.")
+    from integrations.models import Event, Integration
+    from accounts.models import Organization
+    from .crypto import decrypt_credential
+
+    # ✨ 1. FETCH AND DECRYPT THE TOKEN ✨
+    try:
+        integration = Integration.objects.get(org_id=org_id, source="github")
+        encrypted_token = integration.config.get("token")
+
+        if not encrypted_token:
+            logger.error(f"No GitHub token found in config for org {org_id}.")
+            return
+
+        real_token = decrypt_credential(encrypted_token)
+
+        if not real_token:
+            logger.error(f"Failed to decrypt GitHub token for org {org_id}.")
+            return
+
+    except Integration.DoesNotExist:
+        logger.error(f"No GitHub integration found for org {org_id}.")
         return
 
+    # ✨ 2. USE THE DECRYPTED TOKEN ✨
     headers = {
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {real_token}",
         "Accept": "application/vnd.github.v3+json",
     }
 
@@ -86,9 +106,6 @@ def scrape_github_history(
 
     commits = response.json()
     logger.info(f"Fetched {len(commits)} commits from {repo_full_name}")
-
-    from integrations.models import Event
-    from accounts.models import Organization
 
     org = Organization.objects.get(id=org_id)
 

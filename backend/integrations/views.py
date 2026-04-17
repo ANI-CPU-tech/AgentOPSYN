@@ -14,6 +14,8 @@ from .tasks import normalize_and_embed
 from accounts.permissions import IsAdmin, IsAdminOrEngineer
 
 from integrations import serializers
+from .handshakes import verify_github, verify_jira, verify_slack
+from .crypto import encrypt_credential
 
 
 class WebhookReceiverView(APIView):
@@ -83,22 +85,58 @@ class IntegrationDetailView(APIView):
         if not obj:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        serializer = IntegrationSerializer(obj, data=request.data, partial=True)
+        # 1. Make a mutable copy of the request data
+        data = request.data.copy()
+        config = data.get("config", {})
+        source = obj.source
+
+        # ✨ 2. VERIFICATION & ENCRYPTION BLOCK (Only if new token is provided) ✨
+        if source == "github" and "token" in config:
+            if not verify_github(config["token"]):
+                return Response(
+                    {"detail": "Invalid GitHub Personal Access Token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        elif source == "jira" and "token" in config:
+            if not verify_jira(
+                config.get("domain", obj.config.get("domain")),
+                config.get("email", obj.config.get("email")),
+                config["token"],
+            ):
+                return Response(
+                    {"detail": "Invalid Jira credentials."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        elif source == "slack" and "webhook_url" in config:
+            if not verify_slack(config["webhook_url"]):
+                return Response(
+                    {"detail": "Invalid Slack Webhook URL."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["webhook_url"] = encrypt_credential(config["webhook_url"])
+
+        # Merge new config with existing config so we don't lose old data during a partial update
+        merged_config = obj.config.copy()
+        merged_config.update(config)
+        data["config"] = merged_config
+
+        # 3. Save to database
+        serializer = IntegrationSerializer(obj, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         integration = serializer.save()
 
-        # ✨ UPDATED AUTOMATION TRIGGER ✨
+        # 4. Automation Trigger
         if integration.source == "github" and integration.is_active:
-            # Look for the 'repositories' array instead of 'repo_full_name'
             repositories = integration.config.get("repositories", [])
-
-            # Failsafe: if a string is passed by accident, wrap it in a list
             if isinstance(repositories, str):
                 repositories = [repositories]
 
             from .tasks import scrape_github_history
 
-            # Loop through all repos and trigger a task for each
             for repo_name in repositories:
                 scrape_github_history.delay(
                     repo_full_name=repo_name,
@@ -108,6 +146,14 @@ class IntegrationDetailView(APIView):
                 )
 
         return Response(serializer.data)
+
+    def delete(self, request, pk):
+        obj = self._get_integration(pk, request.user.org)
+        if not obj:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        obj.is_active = False
+        obj.save(update_fields=["is_active"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def delete(self, request, pk):
         obj = self._get_integration(pk, request.user.org)
@@ -140,35 +186,65 @@ class EventDetailView(APIView):
 
 
 class IntegrationListCreateView(APIView):
-    # Only admins can list or create integrations
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        """List all connected integrations for this org."""
         integrations = Integration.objects.filter(org=request.user.org)
         return Response(IntegrationSerializer(integrations, many=True).data)
 
     def post(self, request):
-        """Connect a new integration and trigger automated history scraping."""
         source = request.data.get("source")
 
-        # 1. Prevent 500 Error: Check if integration already exists
         if Integration.objects.filter(org=request.user.org, source=source).exists():
             return Response(
                 {
-                    "detail": f"Integration for {source} already exists for this organization. Use DELETE to remove it first or PUT to update it."
+                    "detail": f"Integration for {source} already exists. Use PUT to update."
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = IntegrationSerializer(data=request.data)
+        # 1. Make a mutable copy of the request data so we can modify it
+        data = request.data.copy()
+        config = data.get("config", {})
+
+        # ✨ 2. VERIFICATION & ENCRYPTION BLOCK ✨
+        if source == "github" and "token" in config:
+            if not verify_github(config["token"]):
+                return Response(
+                    {"detail": "Invalid GitHub Personal Access Token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        elif source == "jira" and "token" in config:
+            if not verify_jira(
+                config.get("domain"), config.get("email"), config["token"]
+            ):
+                return Response(
+                    {"detail": "Invalid Jira credentials or domain."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        elif source == "slack" and "webhook_url" in config:
+            if not verify_slack(config["webhook_url"]):
+                return Response(
+                    {"detail": "Invalid Slack Webhook URL."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["webhook_url"] = encrypt_credential(config["webhook_url"])
+
+        # Put the encrypted config back into the payload
+        data["config"] = config
+
+        # 3. Save to database
+        serializer = IntegrationSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         integration = serializer.save(org=request.user.org)
 
-        # ✨ UPDATED AUTOMATION TRIGGER ✨
+        # 4. Automation Trigger
         if integration.source == "github" and integration.is_active:
             repositories = integration.config.get("repositories", [])
-
             if isinstance(repositories, str):
                 repositories = [repositories]
 

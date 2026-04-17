@@ -2,6 +2,8 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 from celery.utils.log import get_task_logger
+from integrations.models import Integration
+from integrations.crypto import decrypt_credential
 
 logger = get_task_logger(__name__)
 
@@ -50,7 +52,7 @@ def execute_action(action) -> dict:
         }
 
     try:
-        result = handler(action.payload)
+        result = handler(action)
         return {"success": True, "result": result, "error": ""}
 
     except Exception as exc:
@@ -63,29 +65,42 @@ def execute_action(action) -> dict:
         return {"success": False, "result": {}, "error": str(exc)}
 
 
-def _execute_slack_alert(payload: dict) -> dict:
-    """Sends a Slack message via webhook URL."""
-    webhook_url = payload.get("webhook_url") or getattr(
-        settings, "SLACK_WEBHOOK_URL", None
-    )
-    message = payload.get("message", "OPSYN Alert")
+def _execute_slack_alert(action) -> dict:
+    """Sends a Slack message via dynamically decrypted webhook URL."""
+    payload = action.payload
 
-    if not webhook_url:
-        raise ValueError("No Slack webhook URL configured.")
+    try:
+        # Pull the Slack integration specifically for the Org that triggered the action
+        integration = Integration.objects.get(org=action.org, source="slack")
+        encrypted_webhook = integration.config.get("webhook_url")
+        webhook_url = decrypt_credential(encrypted_webhook)
+    except Integration.DoesNotExist:
+        raise ValueError("No Slack integration configured for this organization.")
+
+    message = payload.get("message", "OPSYN Alert")
 
     response = requests.post(webhook_url, json={"text": message}, timeout=10)
     response.raise_for_status()
     return {"channel": payload.get("channel", "#general"), "message": message}
 
 
-def _execute_create_jira_ticket(payload: dict) -> dict:
-    """Creates a Jira issue via REST API."""
-    jira_url = getattr(settings, "JIRA_BASE_URL", None)
-    jira_token = getattr(settings, "JIRA_API_TOKEN", None)
-    jira_email = getattr(settings, "JIRA_EMAIL", None)
+def _execute_create_jira_ticket(action) -> dict:
+    """Creates a Jira issue via dynamically decrypted REST API credentials."""
+    payload = action.payload
 
-    if not all([jira_url, jira_token, jira_email]):
-        raise ValueError("Jira credentials not configured in settings.")
+    try:
+        # Pull the Jira integration for this Org
+        integration = Integration.objects.get(org=action.org, source="jira")
+        domain = integration.config.get("domain")
+        email = integration.config.get("email")
+        encrypted_token = integration.config.get("token")
+
+        jira_token = decrypt_credential(encrypted_token)
+    except Integration.DoesNotExist:
+        raise ValueError("No Jira integration configured for this organization.")
+
+    # Clean up the domain just in case the user added a trailing slash
+    clean_domain = domain.rstrip("/")
 
     issue_data = {
         "fields": {
@@ -97,9 +112,9 @@ def _execute_create_jira_ticket(payload: dict) -> dict:
     }
 
     response = requests.post(
-        f"{jira_url}/rest/api/3/issue",
+        f"{clean_domain}/rest/api/3/issue",
         json=issue_data,
-        auth=(jira_email, jira_token),
+        auth=(email, jira_token),
         timeout=15,
     )
     response.raise_for_status()

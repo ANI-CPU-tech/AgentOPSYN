@@ -113,11 +113,8 @@ DATABASES = {
     }
 }
 
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-JIRA_BASE_URL = os.getenv("JIRA_BASE_URL")
-JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
-JIRA_EMAIL = os.getenv("JIRA_EMAIL")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+FERNET_KEY = os.getenv("FERNET_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 CELERY_BEAT_SCHEDULE = {
     "sync-github-history-every-6-hours": {

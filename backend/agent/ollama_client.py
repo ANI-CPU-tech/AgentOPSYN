@@ -1,50 +1,52 @@
 import requests
 import json
+from django.conf import settings
 
-OLLAMA_BASE_URL = "http://host.docker.internal:11434"
-MODEL_NAME = "llama3"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 
 def chat(messages: list, temperature: float = 0.2) -> str:
     """
-    Send messages to local Ollama Llama 3 instance.
-    messages format: [{"role": "system"|"user"|"assistant", "content": "..."}]
-    Returns the assistant's reply as a string.
-    Temperature kept low (0.2) for consistent, deterministic answers.
+    Send messages to Groq's LPU-accelerated Llama 3 instance.
     """
+    api_key = getattr(settings, "GROQ_API_KEY", None)
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY is missing from Django settings or .env.")
+
+    # ✨ FIX 1: Groq rejects exactly 0.0. This forces a safe minimum.
+    safe_temperature = max(temperature, 1e-4)
+
     payload = {
         "model": MODEL_NAME,
         "messages": messages,
-        "stream": False,
-        "options": {
-            "temperature": temperature,
-        },
+        "temperature": safe_temperature,
     }
+
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     try:
         response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
+            GROQ_API_URL,
             json=payload,
-            timeout=120,  # Llama 3 can take a moment on first load
+            headers=headers,
+            timeout=15,
         )
-        response.raise_for_status()
-        data = response.json()
-        return data["message"]["content"].strip()
 
-    except requests.exceptions.ConnectionError:
-        raise RuntimeError(
-            "Cannot connect to Ollama. Make sure it's running: `ollama serve`"
-        )
+        # ✨ FIX 2: Read the actual error string from Groq before crashing!
+        if response.status_code != 200:
+            error_data = response.text
+            raise RuntimeError(f"Groq rejected the request: {error_data}")
+
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
+
     except requests.exceptions.Timeout:
-        raise RuntimeError("Ollama request timed out. Try a shorter query.")
+        raise RuntimeError("Groq API request timed out.")
     except Exception as e:
-        raise RuntimeError(f"Ollama error: {str(e)}")
+        raise RuntimeError(str(e))
 
 
 def is_ollama_running() -> bool:
-    """Health check — used at startup."""
-    try:
-        r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
-        return r.status_code == 200
-    except Exception:
-        return False
+    """Health check — Groq is cloud-hosted, so we just verify the key exists."""
+    return getattr(settings, "GROQ_API_KEY", None) is not None
