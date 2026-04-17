@@ -3,7 +3,7 @@ import secrets
 from django.db.models import Value
 from django.utils.text import slugify
 from rest_framework import serializers
-from .models import User, Organization, APIKey
+from .models import User, Organization, APIKey, Team
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -37,10 +37,23 @@ class RegisterSerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     org_id = serializers.UUIDField(source="org.id", read_only=True)
     org_name = serializers.CharField(source="org.name", read_only=True)
+    team_id = serializers.UUIDField(source="team.id", read_only=True, allow_null=True)
+    team_name = serializers.CharField(
+        source="team.name", read_only=True, allow_null=True
+    )
 
     class Meta:
         model = User
-        fields = ["id", "email", "role", "org_id", "org_name", "created_at"]
+        fields = [
+            "id",
+            "email",
+            "role",
+            "org_id",
+            "org_name",
+            "team_id",
+            "team_name",
+            "created_at",
+        ]
         read_only_fields = ["id", "org_id", "org_name", "created_at"]
 
 
@@ -83,3 +96,10 @@ class CreateAPIKeySerializer(serializers.Serializer):
         )
         api_key._raw_key = raw_key
         return api_key
+
+
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = ["id", "name", "repo_full_name", "created_at"]
+        read_only_fields = ["id", "created_at"]

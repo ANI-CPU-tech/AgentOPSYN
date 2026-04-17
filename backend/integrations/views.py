@@ -63,20 +63,6 @@ class WebhookReceiverView(APIView):
         return Response({"event_id": str(event.id)}, status=status.HTTP_202_ACCEPTED)
 
 
-class IntegrationListCreateView(APIView):
-    permission_classes = [IsAdmin]
-
-    def get(self, request):
-        integrations = Integration.objects.filter(org=request.user.org)
-        return Response(IntegrationSerializer(integrations, many=True).data)
-
-    def post(self, request):
-        serializer = IntegrationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(org=request.user.org)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
 class IntegrationDetailView(APIView):
     permission_classes = [IsAdmin]
 
@@ -96,9 +82,31 @@ class IntegrationDetailView(APIView):
         obj = self._get_integration(pk, request.user.org)
         if not obj:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
         serializer = IntegrationSerializer(obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        integration = serializer.save()
+
+        # ✨ UPDATED AUTOMATION TRIGGER ✨
+        if integration.source == "github" and integration.is_active:
+            # Look for the 'repositories' array instead of 'repo_full_name'
+            repositories = integration.config.get("repositories", [])
+
+            # Failsafe: if a string is passed by accident, wrap it in a list
+            if isinstance(repositories, str):
+                repositories = [repositories]
+
+            from .tasks import scrape_github_history
+
+            # Loop through all repos and trigger a task for each
+            for repo_name in repositories:
+                scrape_github_history.delay(
+                    repo_full_name=repo_name,
+                    org_id=str(request.user.org.id),
+                    user_id=str(request.user.id),
+                    limit=50,
+                )
+
         return Response(serializer.data)
 
     def delete(self, request, pk):
@@ -155,16 +163,18 @@ class IntegrationListCreateView(APIView):
 
         serializer = IntegrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        # 2. Save the integration
         integration = serializer.save(org=request.user.org)
 
-        # 3. AUTOMATION: Trigger the historical scraper if it's GitHub
-        if integration.source == "github":
-            repo_name = integration.config.get("repo_full_name")
-            if repo_name:
-                from .tasks import scrape_github_history
+        # ✨ UPDATED AUTOMATION TRIGGER ✨
+        if integration.source == "github" and integration.is_active:
+            repositories = integration.config.get("repositories", [])
 
+            if isinstance(repositories, str):
+                repositories = [repositories]
+
+            from .tasks import scrape_github_history
+
+            for repo_name in repositories:
                 scrape_github_history.delay(
                     repo_full_name=repo_name,
                     org_id=str(request.user.org.id),

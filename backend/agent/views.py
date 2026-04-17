@@ -22,12 +22,16 @@ class QueryView(APIView):
             return Response(
                 {"detail": "query is required."}, status=status.HTTP_400_BAD_REQUEST
             )
+        repo_name = ""
+        if getattr(request.user, "team", None):  # Safely check if user has a team
+            repo_name = request.user.team.repo_full_name
 
         # --- Step 1: Semantic retrieval from knowledge base ---
         retrieval = semantic_search(
             query=query_text,
             org_id=str(request.user.org_id),
             top_k=top_k,
+            repo_name=repo_name,
         )
 
         # --- Step 2: Knowledge gap → return fallback immediately ---

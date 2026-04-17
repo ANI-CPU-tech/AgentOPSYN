@@ -5,7 +5,7 @@ from .models import Integration, Event
 class IntegrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Integration
-        fields = ["id", "source", "is_active", "last_synced_at", "created_at"]
+        fields = ["id", "source", "config", "is_active", "last_synced_at", "created_at"]
         read_only_fields = ["id", "created_at", "last_synced_at"]
 
 

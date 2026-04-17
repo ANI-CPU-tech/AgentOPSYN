@@ -10,4 +10,10 @@ urlpatterns = [
     path("me/", views.MeView.as_view(), name="auth-me"),
     path("api-keys/", views.APIKeyListCreateView.as_view(), name="apikey-list-create"),
     path("api-keys/<uuid:pk>/", views.APIKeyRevokeView.as_view(), name="apikey-revoke"),
+    path("teams/", views.TeamListCreateView.as_view(), name="team-list-create"),
+    path(
+        "users/<uuid:user_id>/team/",
+        views.AssignUserTeamView.as_view(),
+        name="assign-team",
+    ),
 ]

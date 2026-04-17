@@ -54,6 +54,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     org = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="users"
     )
+    team = models.ForeignKey(
+        "Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="members"
+    )
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -85,3 +88,22 @@ class APIKey(models.Model):
 
     def __str__(self):
         return f"{self.label} ({'active' if self.is_active else 'revoked'})"
+
+
+class Team(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="teams"
+    )
+    name = models.CharField(max_length=255)
+    repo_full_name = models.CharField(
+        max_length=255,
+        help_text="e.g. 'celerity/opsyn' — the exact GitHub full_name this team is scoped to",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("org", "repo_full_name")  # one team per repo per org
+
+    def __str__(self):
+        return f"{self.name} → {self.repo_full_name}"

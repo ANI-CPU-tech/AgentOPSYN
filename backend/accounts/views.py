@@ -8,14 +8,16 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 
-from .models import APIKey
+from .models import APIKey, Team, User
 from .serializers import (
     RegisterSerializer,
     UserSerializer,
     UpdateProfileSerializer,
     APIKeySerializer,
     CreateAPIKeySerializer,
+    TeamSerializer,
 )
+from .permissions import IsAdmin
 
 
 class RegisterView(APIView):
@@ -145,3 +147,52 @@ class APIKeyRevokeView(APIView):
         key.revoked_at = timezone.now()
         key.save(update_fields=["revoked_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TeamListCreateView(APIView):
+    """Admin-only view to create and list teams for the Org."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        teams = Team.objects.filter(org=request.user.org)
+        return Response(TeamSerializer(teams, many=True).data)
+
+    def post(self, request):
+        serializer = TeamSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # Ensure the team belongs to the admin's organization
+        serializer.save(org=request.user.org)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class AssignUserTeamView(APIView):
+    """Admin-only view to move a user into a team."""
+
+    permission_classes = [IsAdmin]
+
+    def post(self, request, user_id):
+        # 1. Find the user (must be in the same org)
+        try:
+            user_to_update = User.objects.get(id=user_id, org=request.user.org)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2. Find the team (must be in the same org)
+        team_id = request.data.get("team_id")
+        if team_id:
+            try:
+                team = Team.objects.get(id=team_id, org=request.user.org)
+                user_to_update.team = team
+            except Team.DoesNotExist:
+                return Response(
+                    {"detail": "Team not found."}, status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            # If no team_id is passed, remove them from their current team
+            user_to_update.team = None
+
+        user_to_update.save(update_fields=["team"])
+        return Response(UserSerializer(user_to_update).data, status=status.HTTP_200_OK)

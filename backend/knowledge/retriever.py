@@ -75,35 +75,34 @@ def shannon_entropy(vectors: list) -> float:
     return entropy
 
 
-def semantic_search(query: str, org_id: str, top_k: int = 10) -> dict:
-    """
-    Full RAG retrieval pipeline:
-    1. Encode query → vector
-    2. pgvector cosine similarity search (HNSW)
-    3. MMR reranking for diversity
-    4. Confidence scoring (Bayesian proxy via cosine sim)
-    5. Shannon entropy for knowledge gap detection
-    """
+def semantic_search(
+    query: str, org_id: str, top_k: int = 10, repo_name: str = ""
+) -> dict:
     query_vector = encode_query(query)
 
-    # --- pgvector cosine similarity search ---
     with connection.cursor() as cursor:
-        cursor.execute(  # change NULL as runbook_id to e.runbook_id once runbook app is done
-            """
+        # This dynamically builds the filter ONLY if the user has a team
+        repo_filter = "AND (e.repo_name = %s OR e.repo_name = '')" if repo_name else ""
+        repo_param = [repo_name] if repo_name else []
+
+        # The 'f' before the quotes is critical! It injects the repo_filter variable.
+        cursor.execute(
+            f"""
             SELECT
                 e.id,
                 e.context_chunk,
                 e.chunk_index,
                 e.event_id,
-                NULL as runbook_id, 
+                NULL as runbook_id,
                 1 - (e.embedding <=> %s::vector) AS similarity
             FROM knowledge_embedding e
             WHERE e.org_id = %s
+            {repo_filter}
             ORDER BY e.embedding <=> %s::vector
             LIMIT %s
         """,
-            [query_vector, org_id, query_vector, top_k * 2],
-        )  # fetch 2x for MMR
+            [query_vector, org_id] + repo_param + [query_vector, top_k * 2],
+        )
 
         rows = cursor.fetchall()
 
@@ -134,16 +133,17 @@ def semantic_search(query: str, org_id: str, top_k: int = 10) -> dict:
     # --- MMR reranking ---
     reranked = mmr_rerank(query_vector, candidates, top_k=top_k)
 
-    # --- Confidence score — average similarity of top results ---
-    avg_similarity = sum(r["similarity"] for r in reranked) / len(reranked)
+    # --- Confidence score ---
+    avg_similarity = (
+        sum(r["similarity"] for r in reranked) / len(reranked) if reranked else 0
+    )
     confidence = round(avg_similarity, 4)
 
-    # --- Knowledge gap detection via Shannon entropy ---
+    # --- Knowledge gap detection ---
     vectors = [r["vector"] for r in reranked]
     entropy = shannon_entropy(vectors)
     gap_detected = entropy > ENTROPY_THRESHOLD or confidence < CONFIDENCE_THRESHOLD
 
-    # Strip vectors from response (not needed by client)
     for r in reranked:
         del r["vector"]
 

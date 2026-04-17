@@ -19,6 +19,13 @@ def get_model() -> SentenceTransformer:
     return _model
 
 
+def _extract_repo_name(source_obj, source_type: str) -> str:
+    if source_type == "event":
+        metadata = source_obj.normalized_payload.get("metadata", {})
+        return metadata.get("repo", "")
+    return ""
+
+
 @shared_task(bind=True, max_retries=3)
 def chunk_and_embed(
     self, event_id: str = None, runbook_id: str = None, source_type: str = "event"
@@ -89,6 +96,7 @@ def chunk_and_embed(
                 embedding=vector.tolist(),
                 chunk_index=i,
                 checkpoint=True,
+                repo_name=_extract_repo_name(source_obj, source_type),
                 **fk_kwargs,
             )
         )
