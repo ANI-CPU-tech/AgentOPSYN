@@ -3,7 +3,7 @@ import json
 from django.conf import settings
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL_NAME = "llama-3.3-70b-versatile"
+MODEL_NAME = "llama-3.1-8b-instant"
 
 
 def chat(messages: list, temperature: float = 0.2) -> str:

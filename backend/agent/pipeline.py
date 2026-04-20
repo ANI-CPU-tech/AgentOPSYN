@@ -34,16 +34,14 @@ def build_context_string(retrieval_results: list) -> str:
 
 
 def extract_json(text: str):
-    """Robustly extracts and cleans JSON from LLM responses."""
+    """Robustly extracts and cleans JSON from LLM responses, ignoring Markdown."""
     try:
-        # Strip common LLM markdown and leading/trailing whitespace
-        text = text.strip().strip("`").replace("json\n", "")
-        # Remove single-line comments that local models often include
-        text = re.sub(r"//.*", "", text)
-
-        match = re.search(r"(\[.*\]|\{.*\})", text, re.DOTALL)
+        # re.DOTALL with greedy matching grabs everything between the first and last brackets
+        match = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
         if match:
-            return json.loads(match.group(1))
+            clean_text = match.group(1)
+            # The URL-destroying comment stripper has been removed!
+            return json.loads(clean_text)
     except Exception as e:
         print(f"DEBUG: JSON Extraction failed: {e}")
     return None
@@ -89,7 +87,7 @@ def run_executor(query: str, context: str, steps: list) -> dict:
         f"If an action is required, you MUST use one of these action_types: {KNOWN_ACTIONS}. "
         "CRITICAL: You must provide the correct keys in action_payload:\n"
         "- 'send_slack_alert' REQUIRES {'message': 'your detailed string'}\n"
-        "- 'create_jira_ticket' REQUIRES {'summary': '...', 'description': '...'}\n"
+        "- 'create_jira_ticket' REQUIRES {'summary': '...', 'description': '...', 'project_key': '...', 'issue_type': 'Task'}\n"
         "- 'scale_deployment' REQUIRES {'service': '...', 'replicas': int}"
     )
 
