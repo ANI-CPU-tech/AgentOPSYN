@@ -9,28 +9,62 @@ from .models import User, Organization, APIKey, Team
 class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
-    org_name = serializers.CharField(max_length=255)
+    org_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    org_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists!")
         return value
 
+    def validate(self, data):
+        org_name = data.get("org_name")
+        org_id = data.get("org_id")
+
+        if not org_name and not org_id:
+            raise serializers.ValidationError(
+                "You must provide either an Organization Name to create one, or an Invite Code to join one."
+            )
+        if org_name and org_id:
+            raise serializers.ValidationError(
+                "Provide either org_name OR org_id, not both."
+            )
+        return data
+
     def create(self, validated_data):
-        org_name = validated_data["org_name"]
-        base_slug = slugify(org_name)
-        slug = base_slug
-        counter = 1
-        while Organization.objects.filter(slug=slug).exists():
-            slug = f"{base_slug}-{counter}"
-            counter += 1
-        org = Organization.objects.create(name=org_name, slug=slug)
-        user = User.objects.create_user(
-            email=validated_data["email"],
-            password=validated_data["password"],
-            org=org,
-            role="admin",
-        )
+        org_id = validated_data.get("org_id")
+        org_name = validated_data.get("org_name")
+
+        if org_id:
+            # 🚀 JOINING AN EXISTING ORG
+            try:
+                org = Organization.objects.get(id=org_id)
+            except Organization.DoesNotExist:
+                raise serializers.ValidationError({"org_id": "Invalid Invite Code."})
+
+            user = User.objects.create_user(
+                email=validated_data["email"],
+                password=validated_data["password"],
+                org=org,
+                role="engineer",  # Joiners are engineers, not admins!
+            )
+        else:
+            # 🚀 CREATING A NEW ORG
+            base_slug = slugify(org_name)
+            slug = base_slug
+            counter = 1
+            while Organization.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            org = Organization.objects.create(name=org_name, slug=slug)
+
+            user = User.objects.create_user(
+                email=validated_data["email"],
+                password=validated_data["password"],
+                org=org,
+                role="admin",  # Creators are admins!
+            )
+
         return user
 
 
