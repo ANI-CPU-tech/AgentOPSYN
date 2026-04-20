@@ -1,6 +1,5 @@
 from typing import List
 
-
 CHUNK_SIZE = 512  # tokens
 OVERLAP = 50  # tokens
 

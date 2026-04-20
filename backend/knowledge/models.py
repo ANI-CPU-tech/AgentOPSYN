@@ -7,11 +7,19 @@ from accounts.models import Organization
 class Embedding(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event = models.ForeignKey(
-        "integrations.Event", on_delete=models.CASCADE, related_name="embeddings"
+        "integrations.Event",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="embeddings",
     )
-    # runbook = models.ForeignKey(
-    #   "runbooks.Runbook", on_delete=models.CASCADE, related_name="embeddings"
-    # )
+    runbook = models.ForeignKey(
+        "runbooks.Runbook",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="embeddings",
+    )
     org = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="embeddings"
     )
