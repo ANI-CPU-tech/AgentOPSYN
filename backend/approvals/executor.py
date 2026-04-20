@@ -86,7 +86,11 @@ def _execute_slack_alert(action) -> dict:
 
 def _execute_create_jira_ticket(action) -> dict:
     """Creates a Jira issue via dynamically decrypted REST API credentials."""
-    payload = action.payload
+
+    # 1. Safely extract the payload (handles both action_payload and payload field names)
+    payload = (
+        getattr(action, "action_payload", None) or getattr(action, "payload", {}) or {}
+    )
 
     try:
         # Pull the Jira integration for this Org
@@ -102,22 +106,39 @@ def _execute_create_jira_ticket(action) -> dict:
     # Clean up the domain just in case the user added a trailing slash
     clean_domain = domain.rstrip("/")
 
+    # 2. Extract values with rock-solid fallbacks (Forcing OPSYN as the default project)
+    project_key = payload.get("project_key") or "KAN"
+    issue_type = (
+        payload.get("issue_type") or "Task"
+    )  # "Task" is safer than "Bug" in default Jira setups
+    summary = payload.get("summary") or "Critical Bug: Backend Error"
+    description = (
+        payload.get("description") or "Automated ticket created by AgentOPSYN."
+    )
+
+    # 3. Build the STRICT nested dictionary Jira demands
     issue_data = {
         "fields": {
-            "project": {"key": payload.get("project_key", "OPS")},
-            "summary": payload.get("summary", "OPSYN Auto-created ticket"),
-            "description": payload.get("description", ""),
-            "issuetype": {"name": payload.get("issue_type", "Bug")},
+            "project": {"key": project_key},
+            "summary": summary,
+            "description": description,
+            "issuetype": {"name": issue_type},
         }
     }
 
+    # 4. Send the Request
     response = requests.post(
-        f"{clean_domain}/rest/api/3/issue",
+        f"{clean_domain}/rest/api/2/issue",
         json=issue_data,
         auth=(email, jira_token),
         timeout=15,
     )
-    response.raise_for_status()
+
+    # Catch the actual error from Jira so we can read it!
+    if response.status_code not in [200, 201]:
+        error_details = response.text
+        raise RuntimeError(f"Jira API Error: {error_details}")
+
     data = response.json()
     return {"issue_key": data.get("key"), "issue_id": data.get("id")}
 
