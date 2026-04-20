@@ -20,14 +20,6 @@ class AgentAction(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # Links back to what triggered this action
-    # incident = models.ForeignKey(
-    #     "incidents.Incident",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name="actions",
-    # )
     query_log = models.ForeignKey(
         "agent.QueryLog",
         on_delete=models.SET_NULL,
