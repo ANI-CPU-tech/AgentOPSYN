@@ -8,6 +8,7 @@ from .ollama_client import is_ollama_running
 from .pipeline import run_agent_pipeline
 from .models import QueryLog
 from .serializers import QueryLogSerializer
+from runbooks.tasks import generate_runbook
 
 
 class QueryView(APIView):
@@ -131,3 +132,22 @@ class QueryDetailView(APIView):
         except QueryLog.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(QueryLogSerializer(log).data)
+
+
+class GenerateRunbookFromQueryView(APIView):
+    """Triggers the Llama 3 AI to write a runbook based on a past query."""
+
+    def post(self, request, pk):
+        try:
+            # Find the query log
+            query_log = QueryLog.objects.get(pk=pk, org=request.user.org)
+
+            # Fire the Celery task in the background!
+            generate_runbook.delay(str(query_log.id))
+
+            return Response(
+                {"detail": "AI is generating the runbook in the background!"},
+                status=status.HTTP_202_ACCEPTED,
+            )
+        except QueryLog.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
