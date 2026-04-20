@@ -38,3 +38,23 @@ def verify_slack(webhook_url: str) -> bool:
     if not webhook_url:
         return False
     return webhook_url.startswith("https://hooks.slack.com/services/")
+
+
+def verify_notion(token: str) -> bool:
+    """
+    Verifies a Notion Internal Integration Secret by fetching the
+    bot user information associated with the token.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": "2022-06-28",  # Standard stable Notion API version
+    }
+    try:
+        # This endpoint is specifically designed to check the identity/validity of the token
+        response = requests.get(
+            "https://api.notion.com/v1/users/me", headers=headers, timeout=5
+        )
+        # Returns 200 if the token is valid and authorized for the workspace
+        return response.status_code == 200
+    except requests.RequestException:
+        return False

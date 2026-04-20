@@ -10,24 +10,29 @@ from .adapters import get_adapter
 from .authentication import APIKeyAuthentication
 from .models import Integration, Event
 from .serializers import IntegrationSerializer, EventSerializer
-from .tasks import normalize_and_embed
+from .tasks import (
+    normalize_and_embed,
+    sync_notion_pages,
+    scrape_github_history,
+)  # Added sync_notion_pages
 from accounts.permissions import IsAdmin, IsAdminOrEngineer
 
 from integrations import serializers
-from .handshakes import verify_github, verify_jira, verify_slack
+from .handshakes import (
+    verify_github,
+    verify_jira,
+    verify_slack,
+    verify_notion,
+)  # Added verify_notion
 from .crypto import encrypt_credential
 
 
 class WebhookReceiverView(APIView):
-    """
-    Single view handles all 5 webhook sources.
-    Source is passed as a URL kwarg e.g. /api/webhooks/github/
-    """
-
     authentication_classes = [APIKeyAuthentication]
     permission_classes = []
 
     def post(self, request, source):
+        # Added 'notion' to allowed sources
         if source not in ("github", "jira", "slack", "notion", "datadog"):
             return Response(
                 {"detail": "Unknown source."}, status=status.HTTP_404_NOT_FOUND
@@ -85,16 +90,15 @@ class IntegrationDetailView(APIView):
         if not obj:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        # 1. Make a mutable copy of the request data
         data = request.data.copy()
         config = data.get("config", {})
         source = obj.source
 
-        # ✨ 2. VERIFICATION & ENCRYPTION BLOCK (Only if new token is provided) ✨
+        # ✨ 2. VERIFICATION & ENCRYPTION BLOCK ✨
         if source == "github" and "token" in config:
             if not verify_github(config["token"]):
                 return Response(
-                    {"detail": "Invalid GitHub Personal Access Token."},
+                    {"detail": "Invalid GitHub Token."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             config["token"] = encrypt_credential(config["token"])
@@ -114,36 +118,44 @@ class IntegrationDetailView(APIView):
         elif source == "slack" and "webhook_url" in config:
             if not verify_slack(config["webhook_url"]):
                 return Response(
-                    {"detail": "Invalid Slack Webhook URL."},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    {"detail": "Invalid Slack URL."}, status=status.HTTP_400_BAD_REQUEST
                 )
             config["webhook_url"] = encrypt_credential(config["webhook_url"])
 
-        # Merge new config with existing config so we don't lose old data during a partial update
+        # 🚀 ADDED: Notion Verification/Encryption
+        elif source == "notion" and "token" in config:
+            if not verify_notion(config["token"]):
+                return Response(
+                    {"detail": "Invalid Notion Secret Token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
         merged_config = obj.config.copy()
         merged_config.update(config)
         data["config"] = merged_config
 
-        # 3. Save to database
         serializer = IntegrationSerializer(obj, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         integration = serializer.save()
 
         # 4. Automation Trigger
-        if integration.source == "github" and integration.is_active:
-            repositories = integration.config.get("repositories", [])
-            if isinstance(repositories, str):
-                repositories = [repositories]
+        if integration.is_active:
+            if integration.source == "github":
+                repositories = integration.config.get("repositories", [])
+                if isinstance(repositories, str):
+                    repositories = [repositories]
+                for repo_name in repositories:
+                    scrape_github_history.delay(
+                        repo_full_name=repo_name,
+                        org_id=str(request.user.org.id),
+                        user_id=str(request.user.id),
+                        limit=50,
+                    )
 
-            from .tasks import scrape_github_history
-
-            for repo_name in repositories:
-                scrape_github_history.delay(
-                    repo_full_name=repo_name,
-                    org_id=str(request.user.org.id),
-                    user_id=str(request.user.id),
-                    limit=50,
-                )
+            # 🚀 ADDED: Notion Automation Trigger
+            elif integration.source == "notion":
+                sync_notion_pages.delay(str(integration.id))
 
         return Response(serializer.data)
 
@@ -155,13 +167,110 @@ class IntegrationDetailView(APIView):
         obj.save(update_fields=["is_active"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def delete(self, request, pk):
-        obj = self._get_integration(pk, request.user.org)
-        if not obj:
+    def patch(self, request, pk):
+        try:
+            integration = Integration.objects.get(pk=pk, org=request.user.org)
+
+            # 🚀 Trigger the Sync Task based on source
+            if request.data.get("is_active") is True:
+                if integration.source == "github":
+                    repos = integration.config.get("repositories", [])
+                    for repo in repos:
+                        scrape_github_history.delay(
+                            repo_full_name=repo,
+                            org_id=str(integration.org.id),
+                            user_id=str(request.user.id),
+                        )
+                elif integration.source == "notion":
+                    # 🚀 Trigger Notion Task
+                    sync_notion_pages.delay(
+                        integration_id=str(integration.id),
+                        org_id=str(integration.org.id),
+                    )
+
+            return Response({"detail": "Sync triggered!"}, status=status.HTTP_200_OK)
+        except Integration.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        obj.is_active = False
-        obj.save(update_fields=["is_active"])
-        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class IntegrationListCreateView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        integrations = Integration.objects.filter(org=request.user.org)
+        return Response(IntegrationSerializer(integrations, many=True).data)
+
+    def post(self, request):
+        source = request.data.get("source")
+
+        if Integration.objects.filter(org=request.user.org, source=source).exists():
+            return Response(
+                {"detail": f"Integration for {source} already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = request.data.copy()
+        config = data.get("config", {})
+
+        # ✨ 2. VERIFICATION & ENCRYPTION BLOCK ✨
+        if source == "github" and "token" in config:
+            if not verify_github(config["token"]):
+                return Response(
+                    {"detail": "Invalid GitHub Token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        elif source == "jira" and "token" in config:
+            if not verify_jira(
+                config.get("domain"), config.get("email"), config["token"]
+            ):
+                return Response(
+                    {"detail": "Invalid Jira credentials."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        elif source == "slack" and "webhook_url" in config:
+            if not verify_slack(config["webhook_url"]):
+                return Response(
+                    {"detail": "Invalid Slack URL."}, status=status.HTTP_400_BAD_REQUEST
+                )
+            config["webhook_url"] = encrypt_credential(config["webhook_url"])
+
+        # 🚀 ADDED: Notion Verification/Encryption
+        elif source == "notion" and "token" in config:
+            if not verify_notion(config["token"]):
+                return Response(
+                    {"detail": "Invalid Notion Secret Token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            config["token"] = encrypt_credential(config["token"])
+
+        data["config"] = config
+        serializer = IntegrationSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        integration = serializer.save(org=request.user.org)
+
+        # 4. Automation Trigger
+        if integration.is_active:
+            if integration.source == "github":
+                repositories = integration.config.get("repositories", [])
+                if isinstance(repositories, str):
+                    repositories = [repositories]
+                for repo_name in repositories:
+                    scrape_github_history.delay(
+                        repo_full_name=repo_name,
+                        org_id=str(request.user.org.id),
+                        user_id=str(request.user.id),
+                        limit=50,
+                    )
+
+            # 🚀 ADDED: Notion Automation Trigger
+            elif integration.source == "notion":
+                sync_notion_pages.delay(str(integration.id))
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class EventListView(APIView):
