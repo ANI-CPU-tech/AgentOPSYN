@@ -1,44 +1,45 @@
-
 # AgentOPSYN
 
-AgentOPSYN is a developer tool we’re building to make it easier to understand and manage what’s happening across different tools (GitHub, logs, etc.).
+AgentOPSYN is an Agentic Developer Experience Platform that helps developers understand, debug, and automate workflows across tools like GitHub, logs, Slack, Jira, and more.
 
-Right now, this repo contains the **backend setup (Django + PostgreSQL + Docker)** and the base structure we’ll build on.
+Instead of manually digging through dashboards and logs, you can:
+
+- Ask: “Why did this fail?”
+- Get contextual answers across systems
+- Automate repetitive developer workflows
 
 ---
 
-## What this project is (in simple terms)
+## Vision
 
-The goal is to build a system where you can:
+AgentOPSYN is a control plane for developer operations, powered by:
 
-* Ask questions about your project (like “why did this fail?”)
-* Get answers using data from different tools
-* Eventually automate some developer workflows
-
-Right now, we are focusing on:
-
-* Setting up the backend
-* Connecting it to a database
-* Making sure everything runs properly using Docker
+- Retrieval-Augmented Generation (RAG)
+- Tool-integrated AI agents
+- Real-time system insights
 
 ---
 
 ## Tech Stack
 
 ### Backend
-
-* Python (Django)
-* PostgreSQL
-* psycopg (database driver)
+- Python (Django)
+- PostgreSQL
+- psycopg
+- Django REST Framework (planned)
 
 ### Frontend
+- React (Vite)
+- TypeScript
 
-* React (Vite) *(not set up yet fully)*
+### Infrastructure
+- Docker
+- Docker Compose
 
-### Dev Setup
-
-* Docker
-* Docker Compose
+### AI / Integrations (Planned / Partial)
+- Groq API
+- Hugging Face
+- GitHub, Slack, Notion, Jira integrations
 
 ---
 
@@ -48,34 +49,47 @@ Right now, we are focusing on:
 AgentOPSYN/
 │
 ├── backend/
-│   ├── backend/        # Django config
+│   ├── backend/          # Django core config
+│   ├── accounts/         # Auth system
+│   ├── agent/            # AI agent logic
+│   ├── approvals/        # Workflow approvals
+│   ├── integrations/     # External tools
+│   ├── knowledge/        # RAG / embeddings layer
+│   ├── runbooks/         # Automated workflows
 │   ├── manage.py
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   ├── wait_for_db.py
-│   └── .env            # not pushed to Git
+│   └── .env              # Not committed
 │
-├── frontend/           # React app
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── dashboard/
+│   │   │   ├── login/
+│   │   │   ├── register/
+│   │   │   ├── runbooks/
+│   │   │   ├── layout.tsx
+│   │   │   └── page.tsx
+│   │   ├── components/
+│   │   │   ├── AgentChat.tsx
+│   │   │   └── IntegrationManager.tsx
+│   │   ├── utils/
+│   │   │   └── api.ts
+│   ├── Dockerfile
+│   ├── package.json
+│   └── ...
+│
 ├── docker-compose.yml
-└── .gitignore
+└── README.md
 ```
 
 ---
 
-## Setup Instructions
+## Environment Variables
 
-### 1. Requirements
-
-Make sure you have:
-
-* Docker
-* Docker Compose
-
----
-
-### 2. Create `.env` file
-
-Inside `backend/`, create a file named `.env`:
+Create a `.env` file inside `backend/`:
 
 ```
 SECRET_KEY=your-secret-key
@@ -83,127 +97,204 @@ DEBUG=True
 
 DB_NAME=agentopsyn_db
 DB_USER=agentopsyn_user
-DB_PASSWORD=your-password
+DB_PASSWORD=strongpassword123
 DB_HOST=db
 DB_PORT=5432
+
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+
+FERNET_KEY=your-fernet-key
+GROQ_API_KEY=your-groq-key
+HF_TOKEN=your-huggingface-token
 ```
 
 ---
 
-### 3. Run the project
+## Generating Required Keys
 
-From the root folder:
+### Django SECRET_KEY
 
+Run this command:
+
+```bash
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
+
+---
+
+### FERNET_KEY
+
+Run:
+
+```python
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+```
+
+---
+
+## Setup Instructions
+
+### 1. Prerequisites
+
+- Docker
+- Docker Compose
+
+---
+
+### 2. Build and Run
+
+```bash
 docker compose up --build
 ```
 
-This will:
-
-* Start PostgreSQL
-* Build the backend container
-* Wait for DB to be ready
-* Start Django server
-
 ---
 
-### 4. Run migrations (important)
+### 3. Run Migrations
 
-In another terminal:
-
-```
+```bash
 docker exec -it agentopsyn_backend python manage.py migrate
 ```
 
-(Optional)
+Optional:
 
-```
+```bash
 docker exec -it agentopsyn_backend python manage.py createsuperuser
 ```
 
 ---
 
-### 5. Open the app
+### 4. Install Frontend Dependency
 
-Go to:
+```bash
+docker exec -it agentopsyn_frontend npm install axios
+```
 
-```
-http://localhost:8000
-```
+---
+
+### 5. Access Application
+
+Backend: http://localhost:8000  
+Frontend: http://localhost:3000 (if configured)
 
 ---
 
 ## Useful Commands
 
-Start:
-
-```
+```bash
 docker compose up
-```
-
-Run in background:
-
-```
 docker compose up -d
-```
-
-Stop:
-
-```
 docker compose down
-```
-
-Rebuild:
-
-```
 docker compose up --build
-```
-
-Logs:
-
-```
 docker compose logs -f
 ```
 
 ---
 
-## Notes
+## Integration Tokens Setup
 
-* Do NOT commit `.env`
-* If something breaks, check logs first
-* If DB issues happen, try restarting containers
+### GitHub Token
+
+1. Go to https://github.com/settings/tokens  
+2. Generate a new token  
+3. Select scopes:
+   - repo
+   - workflow
+   - read:org  
 
 ---
 
-## Who should work on what
+### Notion API Key
 
-Backend:
+1. Go to https://www.notion.so/my-integrations  
+2. Create integration  
+3. Copy internal token  
+4. Share pages with integration  
 
-* Create Django apps
-* Add APIs
-* Handle DB models
+---
 
-Frontend:
+### Slack Token
 
-* Build UI in `frontend/`
-* Connect to backend APIs
+1. Go to https://api.slack.com/apps  
+2. Create app  
+3. Add OAuth scopes:
+   - channels:read
+   - chat:write
+   - users:read  
+4. Install app and copy bot token  
+
+---
+
+### Jira API Token
+
+1. Go to https://id.atlassian.com/manage-profile/security/api-tokens  
+2. Create token  
+3. Use email and token for authentication  
+
+---
+
+### Groq API Key
+
+1. Go to https://console.groq.com  
+2. Generate API key  
+
+---
+
+### Hugging Face Token
+
+1. Go to https://huggingface.co/settings/tokens  
+2. Create token  
+
+---
+
+## Development Guidelines
+
+### Backend
+- Use modular Django apps
+- Keep integrations isolated
+- Put business logic in services
+
+### Frontend
+- Use reusable components
+- Keep API calls inside `utils/api.ts`
+- Maintain clean routing
 
 ---
 
 ## Current Status
 
-* Docker setup working
-* Backend running
-* Database connected
+- Docker setup working  
+- Backend running  
+- Database connected  
+- APIs in progress  
+- Agent system under development  
 
 ---
 
-## Next Steps
+## Roadmap
 
-* Add authentication
-* Build APIs
-* Start connecting frontend
-* Add AI-related features later
+- Authentication (JWT)
+- Integrations (GitHub, Slack, Jira)
+- RAG pipeline
+- Agent orchestration
+- Workflow automation
+- Deployment
 
 ---
 
+## Notes
+
+- Do not commit `.env`
+- Check logs if issues occur:
+  ```bash
+  docker compose logs -f
+  ```
+- Restart containers if database issues occur
+
+---
+
+## Contribution
+
+- Follow project structure
+- Write clean, modular code
+- Keep things scalable
