@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   db:
     image: ankane/pgvector:latest
@@ -38,7 +36,6 @@ services:
   worker:
     build: ./backend
     container_name: agentopsyn_worker
-    # Changed 'config' to 'backend' to match your likely project structure
     command: celery -A backend worker -l info
     volumes:
       - ./backend:/app
@@ -49,6 +46,19 @@ services:
       - redis
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  frontend:
+    build: ./frontend
+    container_name: agentopsyn_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - web
+    stdin_open: true
+    tty: true
 
 volumes:
   postgres_data:
