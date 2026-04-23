@@ -8,7 +8,7 @@ Instead of manually digging through dashboards and logs, you can:
 - Get contextual answers across systems
 - Automate repetitive developer workflows
 
-![Dashboard](assets/dashboard.jpeg)
+![Dashboard](assets/Dashboard.jpeg)
 
 ---
 
