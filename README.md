@@ -273,17 +273,6 @@ docker compose logs -f
 
 ---
 
-## Roadmap
-
-- Authentication (JWT)
-- Integrations (GitHub, Slack, Jira)
-- RAG pipeline
-- Agent orchestration
-- Workflow automation
-- Deployment
-
----
-
 ## Notes
 
 - Do not commit `.env`
